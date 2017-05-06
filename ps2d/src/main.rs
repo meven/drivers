@@ -58,6 +58,32 @@ struct Ps2d<F: Fn(u8,bool,bool) -> char>  {
     scancode_set_2: bool,
 }
 
+
+static MAP_SCAN_CODE_2 : [u8; 112] = [
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,  96,  97,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,  98,   0,  99,
+100,   0,   0,   0,   0, 113, 114, 115,
+116, 117,   0,   0,   0,   0, 101, 102,
+103, 104,   0, 105, 124, 106, 118, 107,
+108, 109, 110, 111,   0,   0,   0,   0,
+    0,   0,   0, 125, 126, 127,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0, 112,
+];
+
+static MAP_SIMPLE : [u8; 40] = [
+       88, 124, 125, 126, 127,   0,   0,   0,
+        0,   0,   0,   0,   0,   0,   0,   0,
+        0,   0,   0,   0,   0, 122,   0, 123,
+        0,   0,   0,  89, 120,   0,   0,  90,
+       91,  92,  93,  94,  95, 124, 121,   0,
+       ];
+
 impl<F: Fn(u8,bool,bool) -> char> Ps2d<F> {
     fn new(input: File, keymap: F) -> Self {
         let mut ps2 = Ps2::new();
@@ -107,12 +133,62 @@ impl<F: Fn(u8,bool,bool) -> char> Ps2d<F> {
             }
         }
     }
-
+    
     fn handle_keyboard(&mut self, data: u8) {
+    
+        let mut keycode = 0;
+        if !self.scancode_set_2 {
+            match data {
+                0xE0 => {
+                    self.scancode_set_2 = !self.scancode_set_2;
+                },
+                0x01 ... 0x58 => {
+                    keycode = data;
+                },
+                0x59 ... 0x7f => {
+    /*
+    0x58:   88 124 125 126 127   0   0   0
+    0x60:    0   0   0   0   0   0   0   0
+    0x68:    0   0   0   0   0 122   0 123
+    0x70:    0   0   0  89 120   0   0  90
+    0x78:   91  92  93  94  95 124 121   0
+    */
+                    keycode = *MAP_SIMPLE.get(data as usize).unwrap_or(&0);
+                    if keycode == 0 {
+                        println!("could decode {} a", data);
+                    }
+                },
+                _ => {}
+            }
+        } else {
+            keycode = *MAP_SCAN_CODE_2.get(data as usize).unwrap_or(&0);
+            if keycode == 0 {
+                println!("could decode {} b", data);
+            }
+/*
+e0 00:    0   0   0   0   0   0   0   0
+e0 08:    0   0   0   0   0   0   0   0
+e0 10:    0   0   0   0   0   0   0   0
+e0 18:    0   0   0   0  96  97   0   0
+e0 20:    0   0   0   0   0   0   0   0
+e0 28:    0   0   0   0   0   0   0   0
+e0 30:    0   0   0   0   0  98   0  99
+e0 38:  100   0   0   0   0 113 114 115
+e0 40:  116 117   0   0   0   0 101 102
+e0 48:  103 104   0 105 124 106 118 107
+e0 50:  108 109 110 111   0   0   0   0
+e0 58:    0   0   0 125 126 127   0   0
+e0 60:    0   0   0   0   0   0   0   0
+e0 68:    0   0   0   0   0   0   0 112
+*/
+            self.scancode_set_2 = false;
+        }
+        
+        println!("keycode: {} {}", keycode, data);
+        
         // The scancode is at least in two part
         // Switch the state machine so that with the next call we get the next piece of the scancode
         if data == 0xE0 {
-            self.scancode_set_2 = !self.scancode_set_2;
         } else {
              let (scancode, pressed) = if data >= 0x80 {
                (data - 0x80, false)
@@ -128,6 +204,7 @@ impl<F: Fn(u8,bool,bool) -> char> Ps2d<F> {
                 // 0xE0, 0x38 is Alt_gr scancode
                 if scancode == 0x38 {
                     self.alt_gr = pressed;
+                    // TODO need fixing
                     // We ignore this key_event further
                     // This is to avoid a problem with orbital/src/scheme.rs
                     return ;
